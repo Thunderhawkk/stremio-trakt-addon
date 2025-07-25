@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { fetch } = require('./utils/fetchHelper');
-const TOKEN_FILE = path.join(__dirname, 'trakt_tokens.json');
+const DATA_DIR = process.env.DATA_DIR || './';
+const TOKEN_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
 const REFRESH_BUFFER = 2 * 60 * 60 * 1000; // Refresh 2 hour before expiry
 let autoRefreshStarted = false;
 
