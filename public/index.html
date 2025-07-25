@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stremio Trakt Add-on Configuration</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Stremio Trakt Add-on Configuration</h1>
+            <div class="header-actions">
+    <button id="addListBtn" class="btn btn-primary">Add List</button>
+    <button id="saveBtn" class="btn btn-success">Save Configuration</button>
+    <button id="refreshBtn" class="btn btn-secondary">Refresh Add-on</button>
+    <button id="refreshTokenBtn" class="btn btn-info">Refresh Token</button>
+    <button id="checkTokenBtn" class="btn btn-secondary">Check Token Status</button>
+    <button id="clearTokenBtn" class="btn btn-danger">Clear Tokens</button>
+    <button id="viewManifestBtn" class="btn btn-info">View Manifest</button>
+    <button id="traktLoginBtn" class="btn btn-warning">Login to Trakt</button>
+</div>
+        </header>
+        <div class="search-filter-section">
+            <div class="search-container">
+                <input type="text" id="listSearch" placeholder="Search lists..." class="search-input">
+                <select id="typeFilter" class="filter-select">
+                    <option value="">All Types</option>
+                    <option value="movie">Movies</option>
+                    <option value="series">Series</option>
+                </select>
+                <button id="togglePreview" class="btn btn-secondary">Preview Catalog</button>
+            </div>
+        </div>
+
+        <main class="main-content">
+            <div class="lists-container" id="listsContainer">
+                <!-- List items will be dynamically inserted here -->
+            </div>
+        </main>
+
+        <div class="addon-install-section">
+    <button id="addAddonBtn" class="btn btn-success btn-large">
+        <span class="btn-icon">📦</span>
+        Add Addon to Stremio
+    </button>
+</div>
+
+<!-- Installation Options Modal -->
+<div id="installModal" class="modal">
+    <div class="modal-content install-modal">
+        <div class="modal-header">
+            <h2>Install Stremio Trakt Addon</h2>
+            <button class="close-btn" id="closeInstallModal">×</button>
+        </div>
+        <div class="modal-body">
+            <p class="install-description">Choose your preferred installation method:</p>
+            
+            <div class="install-options">
+                <div class="install-option">
+                    <div class="option-header">
+                        <h3>🚀 Direct Install</h3>
+                        <span class="option-badge recommended">Recommended</span>
+                    </div>
+                    <p>Open Stremio and install the addon automatically</p>
+                    <button id="directInstallBtn" class="btn btn-primary btn-large">
+                        Open in Stremio
+                    </button>
+                </div>
+                
+                <div class="install-option">
+                    <div class="option-header">
+                        <h3>📋 Copy Link</h3>
+                    </div>
+                    <p>Copy the addon URL to install manually in Stremio</p>
+                    <div class="copy-section">
+                        <input type="text" id="addonUrlInput" readonly class="addon-url-input">
+                        <button id="copyUrlBtn" class="btn btn-secondary">
+                            <span class="copy-text">Copy URL</span>
+                            <span class="copy-success" style="display: none;">Copied!</span>
+                        </button>
+                    </div>
+                    <div class="manual-steps">
+                        <small>
+                            <strong>Manual installation:</strong>
+                            <br>1. Copy the URL above
+                            <br>2. Open Stremio → Settings → Addons
+                            <br>3. Paste the URL and click "Install"
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="install-info">
+                <div class="info-item">
+                    <strong>📊 Status:</strong> 
+                    <span id="addonStatus" class="status-badge">Checking...</span>
+                </div>
+                <div class="info-item">
+                    <strong>🎬 Catalogs:</strong> 
+                    <span id="catalogCount">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <!-- Preview Panel -->
+        <div id="previewPanel" class="preview-panel hidden">
+            <div class="preview-header">
+                <h3>Stremio Catalog Preview</h3>
+                <button id="closePreview" class="close-btn">×</button>
+            </div>
+            <div class="preview-content">
+                <div class="preview-grid" id="previewGrid">
+                    <!-- Preview items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal for adding/editing lists -->
+        <div id="addListModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Add New List</h2>
+                    <button class="close-btn" id="closeModal">×</button>
+                </div>
+                <form id="addListForm" class="modal-form">
+                    <div class="form-group">
+                        <label for="listUrl">Trakt List URL:</label>
+                        <input type="url" id="listUrl" required placeholder="https://trakt.tv/users/username/lists/listname">
+                        <div id="url-feedback" class="validation-feedback"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="listName">Display Name:</label>
+                        <input type="text" id="listName" required placeholder="My Awesome List">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="listType">Content Type:</label>
+                        <select id="listType" required>
+                            <option value="">Select Type</option>
+                            <option value="movie">Movies</option>
+                            <option value="series">TV Series</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sortBy">Sort By:</label>
+                        <select id="sortBy">
+                            <option value="rank">List Order</option>
+                            <option value="title">Title</option>
+                            <option value="year">Year</option>
+                            <option value="rating">Rating</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sortOrder">Sort Order:</label>
+                        <select id="sortOrder">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" id="saveListBtn" class="btn btn-primary">Save List</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Status messages -->
+        <div id="statusMessages" class="status-container"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Ignore environment and token files
+.env
+config/lists.json
+trakt_tokens.json
+poster_cache.json
+config/.env
