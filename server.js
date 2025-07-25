@@ -14,10 +14,7 @@ const addonInterface = require('./addon').getAddonInterface();
 tokenManager.startAutoRefresh();
 let tokenManagerInitialized = false;
 
-const PORT = process.env.PORT || 3000;   // Railway injects PORT (usually 8080)
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 Express UI on :${PORT}`);
-});
+
 const TOKENS_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
 const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
 const PUBLIC_PORT = process.env.PORT || 3000;
@@ -1033,10 +1030,10 @@ app.post('/api/save-token', (req, res) => {
     }
 });
 
-app.listen(3000, () => {
+
   console.log('🌐 Configuration UI available at http://localhost:3000');
   console.log('🔑 First-time setup: visit http://localhost:3000/auth');
-});
+
 
 setTimeout(() => {
     try {
