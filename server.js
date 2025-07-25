@@ -14,6 +14,10 @@ const addonInterface = require('./addon').getAddonInterface();
 tokenManager.startAutoRefresh();
 let tokenManagerInitialized = false;
 
+const PORT = process.env.PORT || 3000;   // Railway injects PORT (usually 8080)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Express UI on :${PORT}`);
+});
 const TOKENS_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
 const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
 const PUBLIC_PORT = process.env.PORT || 3000;
@@ -36,11 +40,6 @@ app.get('/manifest.json', async (req, res, next) => {
     next(e);
   }
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () =>
-  console.log(`🌐 Express UI on :${PORT}`)
-);
 
 const fs = require('fs');
 if (!fs.existsSync(CONFIG_DIR)) {
