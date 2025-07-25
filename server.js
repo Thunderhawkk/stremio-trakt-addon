@@ -37,8 +37,9 @@ app.get('/manifest.json', async (req, res, next) => {
   }
 });
 
-app.listen(PUBLIC_PORT, '0.0.0.0', () =>
-  console.log(`🌐 Express UI on :${PUBLIC_PORT}`)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () =>
+  console.log(`🌐 Express UI on :${PORT}`)
 );
 
 const fs = require('fs');
