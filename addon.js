@@ -12,7 +12,7 @@ require('dotenv').config({ path: './file.env' });
 // ==========================================
 let posterCache = {};
 const POSTER_CACHE_FILE = path.join(__dirname, 'poster_cache.json');
-const LISTS_FILE = path.join(DATA_DIR, 'config', 'lists.json');
+const LISTS_CONFIG_FILE = path.join(DATA_DIR, 'config', 'lists.json');
 
 // ==========================================
 // UTILITY FUNCTIONS
