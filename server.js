@@ -1,6 +1,7 @@
 // server.js
 require('dotenv').config();
 const express = require('express');
+const app = express();
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
@@ -13,7 +14,7 @@ let tokenManagerInitialized = false;
 const UI_PORT = process.env.PORT || 3000;
 const ADDON_PORT = 7000;
 app.listen(UI_PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${ADDON_PORT}`);
 });
 
 if (!tokenManagerInitialized) {
@@ -39,7 +40,6 @@ console.log('CLIENT_SECRET loaded:', process.env.TRAKT_CLIENT_SECRET ? 'YES' : '
 console.log('CLIENT_ID value length:', process.env.TRAKT_CLIENT_ID?.length || 0);
 console.log('=======================');
 
-const app = express();
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
