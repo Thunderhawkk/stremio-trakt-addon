@@ -16,12 +16,30 @@ let tokenManagerInitialized = false;
 
 const TOKENS_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
 const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
+const PUBLIC_PORT = process.env.PORT || 3000;
 const UI_PORT = process.env.PORT || 3000;
 const ADDON_PORT = 7000;
 app.listen(UI_PORT, '0.0.0.0', () => {
     console.log(`Express running on port ${UI_PORT}`);
 });
 
+app.use(express.json());
+app.use(express.static('public'));
+
+/* proxy addon manifest so it’s reachable via the public port */
+app.get('/manifest.json', async (req, res, next) => {
+  try {
+    const r = await fetch(`http://127.0.0.1:${ADDON_PORT}/manifest.json`);
+    const body = await r.text();
+    res.type('application/json').send(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.listen(PUBLIC_PORT, '0.0.0.0', () =>
+  console.log(`🌐 Express UI on :${PUBLIC_PORT}`)
+);
 
 const fs = require('fs');
 if (!fs.existsSync(CONFIG_DIR)) {
@@ -61,21 +79,7 @@ console.log('CLIENT_ID value length:', process.env.TRAKT_CLIENT_ID?.length || 0)
 console.log('=======================');
 
 app.use(bodyParser.json());
-app.use(express.json());
-app.use(express.static('public'));
 
-/* proxy addon manifest so it’s reachable via the public port */
-app.get('/manifest.json', async (req, res, next) => {
-  try {
-    const r = await fetch(`http://localhost:${ADDON_PORT}/manifest.json`);
-    const body = await r.text();
-    res.type('application/json').send(body);
-  } catch (e) {
-    next(e);
-  }
-});
-
-// Rest of your server code remains the same...
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lists.json');
 
