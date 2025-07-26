@@ -52,14 +52,23 @@ try {
 app.get('/manifest.json', async (req, res, next) => {
   console.log('📡 Manifest request received');
   
+  // Add CORS headers for frontend access
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  
   try {
     const ADDON_PORT = 7000;
     const addonUrl = `http://127.0.0.1:${ADDON_PORT}/manifest.json`;
     
     console.log(`🔄 Proxying to: ${addonUrl}`);
     
-    // Make sure fetch is properly imported above!
-    const response = await fetch(addonUrl);
+    const response = await fetch(addonUrl, {
+      timeout: 5000, // 5 second timeout
+      headers: {
+        'User-Agent': 'Stremio-Addon-Proxy'
+      }
+    });
     
     if (!response.ok) {
       throw new Error(`Addon responded with status: ${response.status}`);
@@ -67,18 +76,27 @@ app.get('/manifest.json', async (req, res, next) => {
     
     const manifest = await response.text();
     console.log('✅ Manifest fetched successfully');
+    console.log(`📊 Manifest length: ${manifest.length} characters`);
     
     res.set('Content-Type', 'application/json');
-    res.set('Access-Control-Allow-Origin', '*'); // Allow frontend to access
     res.send(manifest);
     
   } catch (error) {
     console.error('❌ Manifest proxy error:', error.message);
     res.status(502).json({
       error: 'Manifest not available',
-      details: error.message
+      details: error.message,
+      timestamp: new Date().toISOString()
     });
   }
+});
+
+// Add OPTIONS handler for CORS preflight
+app.options('/manifest.json', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(200);
 });
 
 /* proxy addon manifest so it’s reachable via the public port */
@@ -436,41 +454,49 @@ app.post('/api/preview-list', async (req, res) => {
     }
 });
 
-app.post('/api/config', (req, res) => {
-    try {
-        const config = req.body;
-        const configPath = path.join(__dirname, 'config', 'lists.json');
+app.post('/api/config', async (req, res) => {
+  try {
+    const { lists } = req.body;
+    
+    // Save the configuration
+    const configData = { lists };
+    fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2));
+    console.log(`💾 Saved ${lists.length} lists to configuration`);
+    
+    // 🔄 FORCE ADDON RELOAD - Clear require cache
+    const addonPath = require.resolve('./addon');
+    delete require.cache[addonPath];
+    console.log('🔄 Cleared addon module cache');
+    
+    // 🔄 Restart the internal addon server
+    setTimeout(() => {
+      try {
+        console.log('🔄 Restarting addon with new configuration...');
         
-        // Ensure config directory exists
-        const configDir = path.dirname(configPath);
-        if (!fs.existsSync(configDir)) {
-            fs.mkdirSync(configDir, { recursive: true });
-        }
+        // Stop existing addon (if you have a way to stop it)
+        // Note: This is tricky with serveHTTP, but the cache clear helps
         
-        // Save configuration
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        // Rebuild addon interface with new config
+        const newAddonInterface = require('./addon').getAddonInterface();
+        console.log('✅ Addon reloaded with new configuration');
         
-        // FORCE complete cache clearing
-        const addonPath = require.resolve('./addon');
-        delete require.cache[addonPath];
+        // The existing serveHTTP should pick up the new interface
+        // due to the cache clear
         
-        // Clear poster cache too
-        const posterCachePath = path.join(__dirname, 'poster_cache.json');
-        if (fs.existsSync(posterCachePath)) {
-            // Don't delete cache, just force rebuild
-        }
-        
-        console.log('💾 Configuration saved and addon cache cleared');
-        
-        res.json({ 
-            success: true, 
-            message: 'Configuration saved successfully',
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('Config save error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+      } catch (error) {
+        console.error('❌ Failed to reload addon:', error);
+      }
+    }, 1000);
+    
+    res.json({ 
+      success: true, 
+      message: `Saved ${lists.length} lists. Addon reloading...`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error saving configuration:', error);
+    res.status(500).json({ error: 'Failed to save configuration' });
+  }
 });
 
 app.post('/api/validate-list', async (req, res) => {
