@@ -4,6 +4,7 @@ const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 const { serveHTTP } = require('stremio-addon-sdk');
 const tokenManager = require('./tokenManager')
 const { fetch } = require('./utils/fetchHelper');
@@ -20,12 +21,9 @@ const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
 const PUBLIC_PORT = process.env.PORT || 3000;
 const UI_PORT = process.env.PORT || 3000;
 const ADDON_PORT = 7000;
-app.listen(UI_PORT, '0.0.0.0', () => {
-    console.log(`Express running on port ${UI_PORT}`);
-});
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 /* proxy addon manifest so it’s reachable via the public port */
 app.get('/manifest.json', async (req, res, next) => {
@@ -34,11 +32,11 @@ app.get('/manifest.json', async (req, res, next) => {
     const body = await r.text();
     res.type('application/json').send(body);
   } catch (e) {
+    console.error('Manifest proxy error:', e);
     next(e);
   }
 });
 
-const fs = require('fs');
 if (!fs.existsSync(CONFIG_DIR)) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   console.log(`📁 Created config directory: ${CONFIG_DIR}`);
@@ -48,9 +46,23 @@ if (!fs.existsSync(LISTS_FILE)) {
   fs.writeFileSync(LISTS_FILE, JSON.stringify({ lists: [] }, null, 2));
 }
 
+console.log('🔍 Volume Debug Info:');
+console.log(`📁 DATA_DIR: ${DATA_DIR}`);
+console.log(`📁 CONFIG_DIR: ${path.join(DATA_DIR, 'config')}`);
+console.log(`📋 LISTS_FILE: ${path.join(DATA_DIR, 'config', 'lists.json')}`);
+
 console.log(`📂 Data directory: ${DATA_DIR}`);
 console.log(`📋 Lists file: ${LISTS_FILE}`);
 console.log(`🔑 Tokens file: ${TOKENS_FILE}`);
+
+const testFile = path.join(DATA_DIR, 'volume-test.txt');
+try {
+  fs.writeFileSync(testFile, `Volume test - ${new Date().toISOString()}`);
+  console.log('✅ Successfully wrote to volume');
+  console.log(`📄 Test file created at: ${testFile}`);
+} catch (error) {
+  console.error('❌ Failed to write to volume:', error);
+}
 
 if (!tokenManagerInitialized) {
     tokenManager.startAutoRefresh();
@@ -77,6 +89,12 @@ console.log('=======================');
 
 app.use(bodyParser.json());
 
+try {
+  const contents = fs.readdirSync(DATA_DIR);
+  console.log(`📂 Contents of ${DATA_DIR}:`, contents);
+} catch (error) {
+  console.error('❌ Cannot read DATA_DIR:', error);
+}
 
 const CONFIG_PATH = path.join(__dirname, 'config', 'lists.json');
 
@@ -1031,9 +1049,10 @@ app.post('/api/save-token', (req, res) => {
 });
 
 
-  console.log('🌐 Configuration UI available at http://localhost:3000');
-  console.log('🔑 First-time setup: visit http://localhost:3000/auth');
-
+app.listen(PUBLIC_PORT, '0.0.0.0', () => {
+  console.log(`🌐 Express UI running on port ${PUBLIC_PORT}`);
+  console.log(`📱 Configuration UI: Available at root URL`);
+});
 
 setTimeout(() => {
     try {
