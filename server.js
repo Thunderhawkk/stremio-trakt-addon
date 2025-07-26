@@ -7,7 +7,6 @@ const fetch = require('./utils/fetchHelper');
 const fs = require('fs');
 const { serveHTTP } = require('stremio-addon-sdk');
 const tokenManager = require('./tokenManager')
-const { fetch } = require('./utils/fetchHelper');
 const DATA_DIR = process.env.DATA_DIR || './';
 const CONFIG_DIR = path.join(DATA_DIR, 'config');
 const LISTS_FILE = path.join(CONFIG_DIR, 'lists.json');
