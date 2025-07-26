@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const app = express();
@@ -24,6 +23,30 @@ const ADDON_PORT = 7000;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+console.log('🔍 Environment Variables:');
+console.log(`DATA_DIR from env: "${process.env.DATA_DIR}"`);
+console.log(`TRAKT_CLIENT_ID exists: ${!!process.env.TRAKT_CLIENT_ID}`);
+
+// Check if Railway volume is mounted
+console.log('🔍 Volume Mount Check:');
+try {
+  const volumePath = '/data';
+  if (fs.existsSync(volumePath)) {
+    console.log('✅ /data volume exists');
+    const stats = fs.statSync(volumePath);
+    console.log(`📊 /data is ${stats.isDirectory() ? 'directory' : 'file'}`);
+    
+    // Test write to volume
+    const testPath = path.join(volumePath, 'railway-volume-test.txt');
+    fs.writeFileSync(testPath, `Railway volume test: ${new Date()}`);
+    console.log('✅ Successfully wrote to /data volume');
+  } else {
+    console.log('❌ /data volume NOT found');
+  }
+} catch (error) {
+  console.error('❌ Volume check failed:', error.message);
+}
 
 /* proxy addon manifest so it’s reachable via the public port */
 app.get('/manifest.json', async (req, res, next) => {
