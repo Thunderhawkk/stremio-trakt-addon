@@ -604,6 +604,64 @@ async clearTokens() {
     }
 }
 
+async checkManifest() {
+  try {
+    console.log('🔍 Checking manifest...');
+    
+    // Use direct Railway URL instead of relative path
+    const manifestUrl = 'https://profound-recreation-trakt.up.railway.app/manifest.json';
+    
+    const response = await fetch(manifestUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      cache: 'no-cache' // Force fresh request to see updates
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const manifest = await response.json();
+    console.log('✅ Manifest check successful:', manifest);
+    
+    // Update UI to show success and catalog count
+    const manifestButton = document.querySelector('[data-action="check-manifest"]') || 
+                          document.getElementById('checkManifest') || 
+                          document.querySelector('button:contains("Check Manifest")');
+    
+    if (manifestButton) {
+      const catalogCount = manifest.catalogs ? manifest.catalogs.length : 0;
+      manifestButton.textContent = `✅ Manifest OK (${catalogCount} catalogs)`;
+      manifestButton.style.backgroundColor = '#10b981'; // green
+      manifestButton.style.color = 'white';
+    }
+    
+    // Log catalog details for debugging
+    if (manifest.catalogs) {
+      console.log('📋 Available catalogs:', manifest.catalogs.map(c => c.name));
+    }
+    
+    return manifest;
+    
+  } catch (error) {
+    console.error('❌ Manifest check failed:', error);
+    
+    // Update UI to show error
+    const manifestButton = document.querySelector('[data-action="check-manifest"]') || 
+                          document.getElementById('checkManifest') || 
+                          document.querySelector('button:contains("Check Manifest")');
+    
+    if (manifestButton) {
+      manifestButton.textContent = `❌ Manifest Error`;
+      manifestButton.style.backgroundColor = '#ef4444'; // red
+      manifestButton.style.color = 'white';
+    }
+    
+    throw error;
+  }
+}
 
     // Preview functionality
     async togglePreview() {
