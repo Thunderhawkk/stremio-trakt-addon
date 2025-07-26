@@ -179,25 +179,9 @@ function ensureConfigExists() {
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
   }
-
-  if (!fs.existsSync(CONFIG_PATH)) {
-    const defaultConfig = {
-      lists: [
-        {
-          id: 'trending-movies',
-          name: 'Trending Movies',
-          url: 'https://trakt.tv/movies/trending',
-          type: 'movie',
-          sortBy: 'rank',
-          sortOrder: 'asc',
-          enabled: true,
-          order: 0
-        }
-      ]
-    };
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
-  }
 }
+
+  if (!fs.existsSync(CONFIG_PATH))
 
 ensureConfigExists();
 
@@ -457,45 +441,35 @@ app.post('/api/preview-list', async (req, res) => {
 app.post('/api/config', async (req, res) => {
   try {
     const { lists } = req.body;
+    console.log(`💾 Saving ${lists.length} lists to configuration`);
     
     // Save the configuration
-    const configData = { lists };
+    const configData = { lists: lists || [] };
     fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2));
-    console.log(`💾 Saved ${lists.length} lists to configuration`);
+    console.log(`✅ Saved configuration to ${LISTS_FILE}`);
     
-    // 🔄 FORCE ADDON RELOAD - Clear require cache
+    // Clear the addon module cache to force reload
     const addonPath = require.resolve('./addon');
     delete require.cache[addonPath];
     console.log('🔄 Cleared addon module cache');
     
-    // 🔄 Restart the internal addon server
+    // Force a delay to ensure file write is complete
     setTimeout(() => {
-      try {
-        console.log('🔄 Restarting addon with new configuration...');
-        
-        // Stop existing addon (if you have a way to stop it)
-        // Note: This is tricky with serveHTTP, but the cache clear helps
-        
-        // Rebuild addon interface with new config
-        const newAddonInterface = require('./addon').getAddonInterface();
-        console.log('✅ Addon reloaded with new configuration');
-        
-        // The existing serveHTTP should pick up the new interface
-        // due to the cache clear
-        
-      } catch (error) {
-        console.error('❌ Failed to reload addon:', error);
-      }
-    }, 1000);
+      console.log('🔄 Configuration should be updated in addon');
+    }, 500);
     
     res.json({ 
       success: true, 
-      message: `Saved ${lists.length} lists. Addon reloading...`
+      message: `Configuration saved with ${lists.length} lists`,
+      listsCount: lists.length
     });
     
   } catch (error) {
     console.error('❌ Error saving configuration:', error);
-    res.status(500).json({ error: 'Failed to save configuration' });
+    res.status(500).json({ 
+      error: 'Failed to save configuration',
+      details: error.message 
+    });
   }
 });
 
