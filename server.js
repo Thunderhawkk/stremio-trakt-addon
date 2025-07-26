@@ -3,6 +3,7 @@ const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
 const path = require('path');
+const fetch = require('./utils/fetchHelper');
 const fs = require('fs');
 const { serveHTTP } = require('stremio-addon-sdk');
 const tokenManager = require('./tokenManager')
@@ -47,6 +48,39 @@ try {
 } catch (error) {
   console.error('❌ Volume check failed:', error.message);
 }
+
+app.get('/manifest.json', async (req, res, next) => {
+  console.log('📡 Manifest request received');
+  
+  try {
+    const ADDON_PORT = 7000; // Make sure this matches your addon port
+    const addonUrl = `http://127.0.0.1:${ADDON_PORT}/manifest.json`;
+    
+    console.log(`🔄 Proxying to: ${addonUrl}`);
+    
+    const response = await fetch(addonUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Addon responded with status: ${response.status}`);
+    }
+    
+    const manifest = await response.text();
+    console.log('✅ Manifest fetched successfully');
+    
+    res.set('Content-Type', 'application/json');
+    res.send(manifest);
+    
+  } catch (error) {
+    console.error('❌ Manifest proxy error:', error.message);
+    
+    // Return a helpful error response
+    res.status(502).json({
+      error: 'Manifest not available',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 /* proxy addon manifest so it’s reachable via the public port */
 app.get('/manifest.json', async (req, res, next) => {
