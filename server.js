@@ -48,15 +48,17 @@ try {
   console.error('❌ Volume check failed:', error.message);
 }
 
+// In server.js - improve your manifest proxy route
 app.get('/manifest.json', async (req, res, next) => {
   console.log('📡 Manifest request received');
   
   try {
-    const ADDON_PORT = 7000; // Make sure this matches your addon port
+    const ADDON_PORT = 7000;
     const addonUrl = `http://127.0.0.1:${ADDON_PORT}/manifest.json`;
     
     console.log(`🔄 Proxying to: ${addonUrl}`);
     
+    // Make sure fetch is properly imported above!
     const response = await fetch(addonUrl);
     
     if (!response.ok) {
@@ -67,16 +69,14 @@ app.get('/manifest.json', async (req, res, next) => {
     console.log('✅ Manifest fetched successfully');
     
     res.set('Content-Type', 'application/json');
+    res.set('Access-Control-Allow-Origin', '*'); // Allow frontend to access
     res.send(manifest);
     
   } catch (error) {
     console.error('❌ Manifest proxy error:', error.message);
-    
-    // Return a helpful error response
     res.status(502).json({
       error: 'Manifest not available',
-      details: error.message,
-      timestamp: new Date().toISOString()
+      details: error.message
     });
   }
 });
@@ -242,6 +242,10 @@ app.post('/api/validate-list', async (req, res) => {
         const [, username, listSlug] = urlMatch;
         const listUrl = `https://api.trakt.tv/users/${username}/lists/${listSlug}`;
         const itemsUrl = `https://api.trakt.tv/users/${username}/lists/${listSlug}/items`;
+
+app.get('/some-route', async (req, res) => {
+  const response = await fetch(url);
+})
         
         // Get list info
         const listResponse = await fetch(listUrl, {
