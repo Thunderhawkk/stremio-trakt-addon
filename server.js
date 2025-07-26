@@ -6,18 +6,16 @@ const path = require('path');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const tokenManager = require('./tokenManager');
+const { getRouter } = require('stremio-addon-sdk');
 
 // Constants - ONLY ONE PORT NOW
-const PORT = process.env.PORT || 3000; // Single port for everything
+const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const CONFIG_DIR = path.join(DATA_DIR, 'config');
 const LISTS_FILE = path.join(CONFIG_DIR, 'lists.json');
-const TOKENS_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
-const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
 
 // Initialize token manager
 tokenManager.startAutoRefresh();
-let tokenManagerInitialized = false;
 
 console.log(`📁 Using LISTS_FILE: ${LISTS_FILE}`);
 
@@ -25,30 +23,6 @@ console.log(`📁 Using LISTS_FILE: ${LISTS_FILE}`);
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Environment debug
-console.log('🔍 Environment Variables:');
-console.log(`DATA_DIR from env: "${process.env.DATA_DIR}"`);
-console.log(`TRAKT_CLIENT_ID exists: ${!!process.env.TRAKT_CLIENT_ID}`);
-
-// Volume check
-console.log('🔍 Volume Mount Check:');
-try {
-  const volumePath = '/data';
-  if (fs.existsSync(volumePath)) {
-    console.log('✅ /data volume exists');
-    const stats = fs.statSync(volumePath);
-    console.log(`📊 /data is ${stats.isDirectory() ? 'directory' : 'file'}`);
-    
-    const testPath = path.join(volumePath, 'railway-volume-test.txt');
-    fs.writeFileSync(testPath, `Railway volume test: ${new Date()}`);
-    console.log('✅ Successfully wrote to /data volume');
-  } else {
-    console.log('❌ /data volume NOT found');
-  }
-} catch (error) {
-  console.error('❌ Volume check failed:', error.message);
-}
 
 // Ensure directories exist
 if (!fs.existsSync(CONFIG_DIR)) {
@@ -61,91 +35,45 @@ if (!fs.existsSync(LISTS_FILE)) {
 }
 
 // ==========================================
-// STREMIO ADDON ROUTES (INTEGRATED INTO EXPRESS)
+// STREMIO ADDON INTEGRATION (FIXED APPROACH)
 // ==========================================
 
-// Serve manifest directly through Express - NO MORE PROXY!
-app.get('/manifest.json', async (req, res) => {
-  try {
-    console.log('📋 Direct manifest request');
-    
-    // Get addon interface directly
-    delete require.cache[require.resolve('./addon')]; // Fresh load
-    const addonModule = require('./addon');
-    const addonInterface = addonModule.getAddonInterface();
-    const manifest = addonInterface.manifest;
-    
-    res.set({
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
-    });
-    
-    res.json(manifest);
-    console.log(`✅ Manifest served directly (${manifest.catalogs?.length || 0} catalogs)`);
-    
-  } catch (error) {
-    console.error('❌ Manifest error:', error);
-    res.status(500).json({ error: 'Manifest unavailable', details: error.message });
-  }
-});
+// Function to get fresh addon interface
+function getFreshAddonInterface() {
+  // Clear cache to get latest configuration
+  const addonPath = require.resolve('./addon');
+  delete require.cache[addonPath];
+  
+  const addonModule = require('./addon');
+  return addonModule.getAddonInterface();
+}
 
-// Handle catalog requests directly through Express
-app.get('/catalog/:type/:id/:extra?', async (req, res) => {
+// Mount Stremio addon routes using the SDK's getRouter
+app.use('/', (req, res, next) => {
   try {
-    console.log(`📚 Catalog request: ${req.params.type}/${req.params.id}`);
+    // Get fresh addon for each request to pick up config changes
+    const addonInterface = getFreshAddonInterface();
+    const addonRouter = getRouter(addonInterface);
     
-    // Get fresh addon interface
-    delete require.cache[require.resolve('./addon')];
-    const addonModule = require('./addon');
-    const addonInterface = addonModule.getAddonInterface();
-    
-    // Parse extra parameters
-    const extra = {};
-    if (req.params.extra) {
-      const pairs = req.params.extra.split('&');
-      pairs.forEach(pair => {
-        const [key, value] = pair.split('=');
-        if (key && value) {
-          extra[decodeURIComponent(key)] = decodeURIComponent(value);
-        }
-      });
+    // Only handle Stremio-specific routes
+    if (req.path === '/manifest.json' || req.path.startsWith('/catalog/')) {
+      console.log(`📋 Stremio request: ${req.method} ${req.path}`);
+      addonRouter(req, res, next);
+    } else {
+      next();
     }
-    
-    // Call catalog handler
-    const args = {
-      type: req.params.type,
-      id: req.params.id,
-      extra: extra
-    };
-    
-    const result = await addonInterface.catalogHandler(args);
-    
-    res.set({
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=300' // 5 minute cache
-    });
-    
-    res.json(result);
-    console.log(`✅ Catalog served: ${result.metas?.length || 0} items`);
-    
   } catch (error) {
-    console.error('❌ Catalog error:', error);
-    res.status(500).json({ error: 'Catalog unavailable', details: error.message });
+    console.error('❌ Addon router error:', error);
+    if (req.path === '/manifest.json' || req.path.startsWith('/catalog/')) {
+      res.status(500).json({ error: 'Addon temporarily unavailable', details: error.message });
+    } else {
+      next();
+    }
   }
 });
 
-// CORS options for Stremio routes
-app.options(['/manifest.json', '/catalog/*'], (req, res) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-  res.sendStatus(200);
-});
-
 // ==========================================
-// EXISTING API ROUTES (SIMPLIFIED)
+// YOUR EXISTING API ROUTES
 // ==========================================
 
 app.get('/', (req, res) => {
@@ -168,7 +96,7 @@ app.get('/api/config', (req, res) => {
   }
 });
 
-// SIMPLIFIED configuration saving - no server restart needed!
+// SIMPLIFIED configuration saving
 app.post('/api/config', async (req, res) => {
   try {
     const { lists } = req.body;
@@ -182,13 +110,9 @@ app.post('/api/config', async (req, res) => {
     fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2));
     console.log(`✅ Saved configuration to ${LISTS_FILE}`);
     
-    // Simple cache clearing - addon routes will get fresh data automatically
+    // Clear addon cache so next request picks up new config
     const addonPath = require.resolve('./addon');
-    const tokenManagerPath = require.resolve('./tokenManager');
-    
     delete require.cache[addonPath];
-    delete require.cache[tokenManagerPath];
-    
     console.log('🔄 Cleared addon cache - changes effective immediately');
     
     res.json({ 
@@ -202,7 +126,7 @@ app.post('/api/config', async (req, res) => {
   }
 });
 
-// Fix addon info endpoint
+// Fixed addon info endpoint
 app.get('/api/addon-info', (req, res) => {
   try {
     let enabledCount = 0;
@@ -216,7 +140,7 @@ app.get('/api/addon-info', (req, res) => {
       catalogCount: enabledCount,
       addonName: 'Stremio Trakt Addon',
       version: '1.0.0',
-      manifestUrl: `${req.protocol}://${req.get('host')}/manifest.json` // Same domain, same port!
+      manifestUrl: `${req.protocol}://${req.get('host')}/manifest.json`
     });
   } catch (error) {
     res.status(500).json({ status: 'error', error: error.message });
@@ -235,7 +159,6 @@ app.post('/api/validate-list', async (req, res) => {
     
     const [, username, listSlug] = urlMatch;
     const listUrl = `https://api.trakt.tv/users/${username}/lists/${listSlug}`;
-    const itemsUrl = `https://api.trakt.tv/users/${username}/lists/${listSlug}/items`;
     
     const listResponse = await fetch(listUrl, {
       headers: {
@@ -251,25 +174,10 @@ app.post('/api/validate-list', async (req, res) => {
     
     const listData = await listResponse.json();
     
-    const itemsResponse = await fetch(`${itemsUrl}?limit=1`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'trakt-api-version': '2',
-        'trakt-api-key': process.env.TRAKT_CLIENT_ID
-      }
-    });
-    
-    let itemCount = 0;
-    if (itemsResponse.ok) {
-      const paginationHeader = itemsResponse.headers.get('x-pagination-item-count');
-      itemCount = paginationHeader ? parseInt(paginationHeader) : '?';
-    }
-    
     res.json({
       valid: true,
       listName: listData.name,
       listDescription: listData.description,
-      itemCount: itemCount,
       privacy: listData.privacy
     });
   } catch (error) {
@@ -281,7 +189,7 @@ app.post('/api/validate-list', async (req, res) => {
 // Preview list items
 app.post('/api/preview-list', async (req, res) => {
   try {
-    const { listUrl, limit = 8, type, sortBy, sortOrder } = req.body;
+    const { listUrl, limit = 8, type } = req.body;
     
     const urlMatch = listUrl.match(/trakt\.tv\/users\/([^\/]+)\/lists\/([^\/\?]+)/);
     if (!urlMatch) {
@@ -314,31 +222,7 @@ app.post('/api/preview-list', async (req, res) => {
     
     const items = await response.json();
     
-    // Helper function for poster URLs
-    const getPosterUrl = async (content, itemType) => {
-      if (content.ids && content.ids.tmdb && process.env.TMDB_API_KEY) {
-        try {
-          const tmdbType = itemType === 'movie' ? 'movie' : 'tv';
-          const tmdbResponse = await fetch(
-            `https://api.themoviedb.org/3/${tmdbType}/${content.ids.tmdb}?api_key=${process.env.TMDB_API_KEY}`
-          );
-          if (tmdbResponse.ok) {
-            const tmdbData = await tmdbResponse.json();
-            if (tmdbData.poster_path) {
-              return `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`;
-            }
-          }
-        } catch (error) {
-          console.error('TMDB fetch error:', error);
-        }
-      }
-      
-      const title = encodeURIComponent(content.title || 'Unknown');
-      const year = content.year || '';
-      return `data:image/svg+xml;charset=UTF-8,%3Csvg width='300' height='450' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='300' height='450' fill='%23f3f4f6'/%3E%3Ctext x='150' y='200' text-anchor='middle' font-family='Arial' font-size='16' fill='%23374151'%3E${title}%3C/text%3E%3Ctext x='150' y='230' text-anchor='middle' font-family='Arial' font-size='14' fill='%236b7280'%3E${year}%3C/text%3E%3Ctext x='150' y='280' text-anchor='middle' font-family='Arial' font-size='12' fill='%239ca3af'%3ENo Poster Available%3C/text%3E%3C/svg%3E`;
-    };
-    
-    const previewItems = await Promise.all(items.map(async (item) => {
+    const previewItems = items.map((item) => {
       const content = item.movie || item.show;
       const itemType = item.movie ? 'movie' : 'series';
       
@@ -349,30 +233,14 @@ app.post('/api/preview-list', async (req, res) => {
         type: itemType,
         name: content.title,
         year: content.year,
-        poster: await getPosterUrl(content, itemType),
-        imdbRating: content.rating
+        poster: content.ids.imdb ? 
+          `https://images.metahub.space/poster/medium/${content.ids.imdb}/img` : 
+          `data:image/svg+xml;charset=UTF-8,%3Csvg width='300' height='450' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='300' height='450' fill='%23f3f4f6'/%3E%3Ctext x='150' y='225' text-anchor='middle' font-family='Arial' font-size='16' fill='%23374151'%3E${encodeURIComponent(content.title)}%3C/text%3E%3C/svg%3E`,
+        imdbRating: content.rating || 0
       };
-    }));
+    }).filter(Boolean);
     
-    const filteredItems = previewItems.filter(Boolean);
-    
-    if (sortBy && sortBy !== 'rank') {
-      filteredItems.sort((a, b) => {
-        let aVal = a[sortBy];
-        let bVal = b[sortBy];
-        if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase();
-          bVal = bVal.toLowerCase();
-        }
-        if (sortOrder === 'desc') {
-          return bVal > aVal ? 1 : -1;
-        } else {
-          return aVal > bVal ? 1 : -1;
-        }
-      });
-    }
-    
-    res.json(filteredItems.slice(0, limit));
+    res.json(previewItems.slice(0, limit));
   } catch (error) {
     console.error('Preview error:', error);
     res.status(500).json({ error: 'Failed to generate preview' });
@@ -439,12 +307,6 @@ app.get('/api/token-status', (req, res) => {
     const hoursUntilExpiry = Math.max(0, Math.floor((expiresAt - now) / (1000 * 60 * 60)));
     const minutesUntilExpiry = Math.max(0, Math.floor((expiresAt - now) / (1000 * 60)));
     
-    console.log('Token status:', {
-      isExpired,
-      hoursUntilExpiry,
-      hasRefreshToken: !!tokens.refresh_token
-    });
-    
     res.json({
       hasToken: true,
       hasRefreshToken: !!tokens.refresh_token,
@@ -480,13 +342,11 @@ app.post('/auth', async (req, res) => {
       })
     });
     
-    console.log('Auth init response status:', response.status);
     if (!response.ok) {
       throw new Error(`Trakt API error: ${response.status}`);
     }
     
     const data = await response.json();
-    console.log('Auth init successful');
     res.json({
       device_code: data.device_code,
       user_code: data.user_code,
@@ -522,11 +382,9 @@ app.post('/poll', async (req, res) => {
       })
     });
     
-    console.log('Poll response status:', response.status);
     const data = await response.json();
     
     if (response.ok && data.access_token) {
-      console.log('Authentication successful');
       await tokenManager.saveTokens({
         access_token: data.access_token,
         refresh_token: data.refresh_token,
@@ -590,7 +448,6 @@ app.get('/api/check-auth', async (req, res) => {
         tokenExpiresAt: tokens.expires_at
       });
     } else {
-      console.error('User info fetch failed:', userResponse.status);
       res.json({ authenticated: false });
     }
   } catch (error) {
@@ -602,10 +459,10 @@ app.get('/api/check-auth', async (req, res) => {
 app.post('/api/clear-tokens', (req, res) => {
   try {
     console.log('Token clear requested');
-    const tokenFile = path.join(__dirname, 'trakt_tokens.json');
+    const tokenFile = path.join(DATA_DIR, 'trakt_tokens.json');
     
     if (fs.existsSync(tokenFile)) {
-      const backupFile = path.join(__dirname, `trakt_tokens.backup.${Date.now()}.json`);
+      const backupFile = path.join(DATA_DIR, `trakt_tokens.backup.${Date.now()}.json`);
       fs.copyFileSync(tokenFile, backupFile);
       console.log('Token backup created:', backupFile);
       
@@ -627,14 +484,14 @@ app.post('/api/clear-tokens', (req, res) => {
 });
 
 // ==========================================
-// START SINGLE SERVER - NO MORE DUAL PORTS!
+// START SINGLE SERVER
 // ==========================================
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SINGLE SERVER running on port ${PORT}`);
   console.log(`🌐 Configuration UI: http://localhost:${PORT}/`);
   console.log(`📋 Stremio manifest: http://localhost:${PORT}/manifest.json`);
-  console.log(`✅ Everything running on ONE port - no proxy needed!`);
+  console.log(`✅ Everything running on ONE port using Stremio SDK router!`);
   console.log(`🎯 Railway URL: https://profound-recreation-trakt.up.railway.app/`);
   console.log(`📱 Install URL: https://profound-recreation-trakt.up.railway.app/manifest.json`);
 });
