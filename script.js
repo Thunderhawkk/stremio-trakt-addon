@@ -1,16 +1,30 @@
 async function checkManifest() {
+  const button = document.querySelector('button[onclick="checkManifest()"]') || 
+                 document.querySelector('#checkManifest') ||
+                 document.querySelector('[data-action="check-manifest"]');
+  
+  if (button) {
+    button.textContent = '🔄 Checking...';
+    button.disabled = true;
+    button.style.backgroundColor = '#6b7280'; // gray
+  }
+  
   try {
     console.log('🔍 Checking manifest...');
     
-    // Use direct Railway URL instead of relative path
-    const manifestUrl = 'https://profound-recreation-trakt.up.railway.app/manifest.json';
+    // Use the correct URL without port
+    const manifestUrl = `${window.location.origin}/manifest.json`;
+    console.log('🔗 Fetching from:', manifestUrl);
     
     const response = await fetch(manifestUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       },
-      cache: 'no-cache' // Force fresh request to see updates
+      cache: 'no-store' // Force completely fresh request
     });
     
     if (!response.ok) {
@@ -18,40 +32,42 @@ async function checkManifest() {
     }
     
     const manifest = await response.json();
-    console.log('✅ Manifest check successful:', manifest);
+    console.log('✅ Manifest loaded successfully:', manifest);
     
-    // Update UI to show success and catalog count
-    const manifestButton = document.querySelector('[data-action="check-manifest"]') || 
-                          document.getElementById('checkManifest') || 
-                          document.querySelector('button:contains("Check Manifest")');
-    
-    if (manifestButton) {
+    // Update UI with success
+    if (button) {
       const catalogCount = manifest.catalogs ? manifest.catalogs.length : 0;
-      manifestButton.textContent = `✅ Manifest OK (${catalogCount} catalogs)`;
-      manifestButton.style.backgroundColor = '#10b981'; // green
-      manifestButton.style.color = 'white';
+      button.textContent = `✅ ${catalogCount} catalogs found`;
+      button.style.backgroundColor = '#10b981'; // green
+      button.style.color = 'white';
+      button.disabled = false;
     }
     
-    // Log catalog details for debugging
-    if (manifest.catalogs) {
-      console.log('📋 Available catalogs:', manifest.catalogs.map(c => c.name));
+    // Show detailed info in console
+    if (manifest.catalogs && manifest.catalogs.length > 0) {
+      console.log('📋 Available catalogs:');
+      manifest.catalogs.forEach((catalog, index) => {
+        console.log(`  ${index + 1}. ${catalog.name} (${catalog.id})`);
+      });
     }
+    
+    // Update addon URLs with correct path
+    updateAddonUrl();
     
     return manifest;
     
   } catch (error) {
     console.error('❌ Manifest check failed:', error);
     
-    // Update UI to show error
-    const manifestButton = document.querySelector('[data-action="check-manifest"]') || 
-                          document.getElementById('checkManifest') || 
-                          document.querySelector('button:contains("Check Manifest")');
-    
-    if (manifestButton) {
-      manifestButton.textContent = `❌ Manifest Error`;
-      manifestButton.style.backgroundColor = '#ef4444'; // red
-      manifestButton.style.color = 'white';
+    if (button) {
+      button.textContent = '❌ Failed to load';
+      button.style.backgroundColor = '#ef4444'; // red
+      button.style.color = 'white';
+      button.disabled = false;
     }
+    
+    // Show user-friendly error
+    alert(`Manifest check failed: ${error.message}\n\nPlease try:\n1. Saving your configuration again\n2. Refreshing the page\n3. Checking Railway logs for errors`);
     
     throw error;
   }
@@ -70,6 +86,9 @@ class StremioTraktConfig {
         await this.loadConfig();
         this.setupEventListeners();
         this.renderLists();
+
+        this.updateDisplayedUrls();
+        await this.checkAuthStatus();
     }
 
     async checkAuthStatus() {
@@ -154,16 +173,15 @@ class StremioTraktConfig {
     }
 
     getAddonUrl() {
-    // Construct the addon manifest URL
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    const addonPort = 7000; // Your addon server port (not 3001)
-    return `${protocol}//${hostname}:${addonPort}/manifest.json`;
+    // Use the same origin as the current page (no port needed)
+    return `${window.location.origin}/manifest.json`;
 }
 
 async openInstallModal() {
     const modal = document.getElementById('installModal');
     const urlInput = document.getElementById('addonUrlInput');
+    
+    // Get the CORRECT addon URL (this will now use the fixed getAddonUrl method)
     const addonUrl = this.getAddonUrl();
     
     // Set the addon URL in the input
@@ -631,6 +649,44 @@ async clearTokens() {
         }
     }
 
+    updateDisplayedUrls() {
+    try {
+        // Get the correct addon URL (without port 7000)
+        const correctUrl = this.getAddonUrl();
+        
+        // Update the addon URL input field
+        const urlInput = document.getElementById('addonUrlInput');
+        if (urlInput) {
+            urlInput.value = correctUrl;
+        }
+        
+        // Update any displayed URLs in the interface
+        const urlDisplays = document.querySelectorAll('.addon-url-display, [data-addon-url]');
+        urlDisplays.forEach(element => {
+            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                element.value = correctUrl;
+            } else {
+                element.textContent = correctUrl;
+            }
+        });
+        
+        // Update any Stremio deep links
+        const stremioUrl = `stremio://${correctUrl}`;
+        const deepLinks = document.querySelectorAll('[data-stremio-link], .stremio-deep-link');
+        deepLinks.forEach(element => {
+            if (element.tagName === 'A') {
+                element.href = stremioUrl;
+            } else {
+                element.textContent = stremioUrl;
+            }
+        });
+        
+        console.log('✅ Updated all addon URLs to:', correctUrl);
+    } catch (error) {
+        console.error('❌ Failed to update addon URLs:', error);
+    }
+}
+
     async testBackgroundRefresh() {
     // Prevent rapid multiple clicks
     const button = document.getElementById('testBackgroundRefreshBtn');
@@ -855,21 +911,31 @@ listSection.innerHTML = `
     async saveConfig() {
         try {
             const response = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(this.config)
-            });
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(this.config)
+        });
 
-            if (response.ok) {
-                this.showStatus('Configuration saved successfully', 'success');
-            } else {
-                throw new Error('Failed to save configuration');
-            }
-        } catch (error) {
-            this.showStatus('Failed to save configuration', 'error');
-            console.error('Save error:', error);
+        if (response.ok) {
+            this.showStatus('Configuration saved successfully!', 'success');
+            
+            // 🔄 ADD THIS: Update addon URLs after saving
+            setTimeout(() => {
+                this.updateDisplayedUrls();
+                console.log('🔗 Addon URLs updated after save');
+            }, 1000);
+            
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save configuration');
         }
+    } catch (error) {
+        this.showStatus(`Failed to save configuration: ${error.message}`, 'error');
+        console.error('Save config error:', error);
     }
+}
 
     async refreshAddon() {
         try {

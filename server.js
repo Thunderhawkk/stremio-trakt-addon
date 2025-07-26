@@ -13,6 +13,7 @@ const LISTS_FILE = path.join(CONFIG_DIR, 'lists.json');
 const addonInterface = require('./addon').getAddonInterface();
 tokenManager.startAutoRefresh();
 let tokenManagerInitialized = false;
+let currentAddonServer = null;
 
 console.log(`📁 Using LISTS_FILE: ${LISTS_FILE}`);
 
@@ -215,18 +216,78 @@ app.post('/api/config', async (req, res) => {
     // Ensure directory exists
     fs.mkdirSync(path.dirname(LISTS_FILE), { recursive: true });
     
+    // Save the configuration
     const configData = { lists: lists || [] };
-    fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2)); // ✅ LISTS_FILE
+    fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2));
     console.log(`✅ Saved configuration to ${LISTS_FILE}`);
     
-    // Clear addon cache
+    // 🔄 AGGRESSIVE CACHE CLEARING
+    console.log('🔄 Clearing ALL relevant module caches...');
+    
+    // Clear addon and related modules
     const addonPath = require.resolve('./addon');
+    const tokenManagerPath = require.resolve('./tokenManager');
+    
     delete require.cache[addonPath];
-    console.log('🔄 Cleared addon module cache');
+    delete require.cache[tokenManagerPath];
+    
+    // Also clear any nested requires within addon.js
+    Object.keys(require.cache).forEach(key => {
+      if (key.includes('addon') || key.includes('tokenManager')) {
+        delete require.cache[key];
+      }
+    });
+    
+    // Stop existing addon server if it exists
+    if (currentAddonServer && currentAddonServer.close) {
+      try {
+        currentAddonServer.close();
+        console.log('🛑 Stopped existing addon server');
+      } catch (e) {
+        console.log('⚠️ Could not stop existing server:', e.message);
+      }
+    }
+    
+    // Wait a moment for cleanup
+    setTimeout(async () => {
+      try {
+        // Restart the addon with fresh configuration
+        const newAddonInterface = require('./addon').getAddonInterface();
+        currentAddonServer = serveHTTP(newAddonInterface, { 
+          port: 7000, 
+          hostname: '0.0.0.0' 
+        });
+
+        try {
+      // This forces a fresh load with new configuration
+      const freshAddon = require('./addon');
+      const testInterface = freshAddon.getAddonInterface();
+      console.log('✅ Fresh addon interface created with new configuration');
+    } catch (error) {
+      console.error('❌ Error creating fresh addon interface:', error);
+    }
+        
+        console.log('✅ Addon restarted with new configuration');
+        
+        // Test the new manifest
+        setTimeout(async () => {
+          try {
+            const testResponse = await fetch('http://127.0.0.1:7000/manifest.json');
+            const testManifest = await testResponse.json();
+            console.log(`✅ New manifest has ${testManifest.catalogs?.length || 0} catalogs`);
+          } catch (e) {
+            console.error('❌ Failed to test new manifest:', e.message);
+          }
+        }, 1000);
+        
+      } catch (error) {
+        console.error('❌ Failed to restart addon:', error);
+      }
+    }, 1000);
     
     res.json({ 
       success: true, 
-      message: `Configuration saved with ${lists.length} lists`
+      message: `Configuration saved with ${lists.length} lists. Manifest updated.`
     });
     
   } catch (error) {
