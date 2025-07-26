@@ -11,7 +11,7 @@ require('dotenv').config({ path: './file.env' });
 // ==========================================
 let posterCache = {};
 const POSTER_CACHE_FILE = path.join(__dirname, 'poster_cache.json');
-const DATA_DIR = process.env.DATA_DIR || './';
+const DATA_DIR = process.env.DATA_DIR || './data';
 const LISTS_FILE = path.join(DATA_DIR, 'config', 'lists.json');
 
 // ==========================================
@@ -51,22 +51,16 @@ function savePosterCache() {
 function loadConfig() {
   try {
     if (!fs.existsSync(LISTS_FILE)) {
-    console.warn('lists.json not found – creating an empty config');
-    fs.mkdirSync(path.dirname(LISTS_FILE), { recursive: true });
-    fs.writeFileSync(LISTS_FILE, JSON.stringify({ lists: [] }, null, 2));
-  }
-
-    
-    const data = fs.readFileSync(LISTS_FILE, 'utf8');
-    const config = JSON.parse(data);
-    
-    if (!config.lists || !Array.isArray(config.lists)) {
-      console.error('❌ Invalid lists.json format');
-      return { lists: [] };
+      console.log('📄 No lists.json found, creating empty config');
+      const emptyConfig = { lists: [] };
+      fs.mkdirSync(path.dirname(LISTS_FILE), { recursive: true });
+      fs.writeFileSync(LISTS_FILE, JSON.stringify(emptyConfig, null, 2));
+      return emptyConfig;
     }
     
-    console.log(`📋 Loaded ${config.lists.length} lists from configuration`);
-    return config;
+    const data = fs.readFileSync(LISTS_FILE, 'utf8'); // ✅ LISTS_FILE
+    return JSON.parse(data);
+    
   } catch (error) {
     console.error('❌ Error loading config:', error);
     return { lists: [] };

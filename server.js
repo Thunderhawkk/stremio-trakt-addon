@@ -7,13 +7,14 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const { serveHTTP } = require('stremio-addon-sdk');
 const tokenManager = require('./tokenManager')
-const DATA_DIR = process.env.DATA_DIR || './';
+const DATA_DIR = process.env.DATA_DIR || './data';
 const CONFIG_DIR = path.join(DATA_DIR, 'config');
 const LISTS_FILE = path.join(CONFIG_DIR, 'lists.json');
 const addonInterface = require('./addon').getAddonInterface();
 tokenManager.startAutoRefresh();
 let tokenManagerInitialized = false;
 
+console.log(`📁 Using LISTS_FILE: ${LISTS_FILE}`);
 
 const TOKENS_FILE = path.join(DATA_DIR, 'trakt_tokens.json');
 const CACHE_FILE = path.join(DATA_DIR, 'poster_cache.json');
@@ -191,13 +192,46 @@ app.get('/', (req, res) => {
 
 app.get('/api/config', (req, res) => {
   try {
-    const content = fs.readFileSync(CONFIG_PATH, 'utf8');
-    const config = JSON.parse(content);
+    // ✅ Use LISTS_FILE, not hardcoded path
+    if (!fs.existsSync(LISTS_FILE)) {
+      console.log('📄 No config file found, returning empty');
+      return res.json({ lists: [] });
+    }
+    
+    const data = fs.readFileSync(LISTS_FILE, 'utf8'); // ✅ LISTS_FILE
+    const config = JSON.parse(data);
     res.json(config);
   } catch (error) {
-    console.error('Error reading config:', error);
-    const defaultConfig = { lists: [] };
-    res.json(defaultConfig);
+    console.error('❌ Error reading config:', error);
+    res.status(500).json({ error: 'Failed to read configuration' });
+  }
+});
+
+app.post('/api/config', async (req, res) => {
+  try {
+    const { lists } = req.body;
+    console.log(`💾 Saving ${lists.length} lists to configuration`);
+    
+    // Ensure directory exists
+    fs.mkdirSync(path.dirname(LISTS_FILE), { recursive: true });
+    
+    const configData = { lists: lists || [] };
+    fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2)); // ✅ LISTS_FILE
+    console.log(`✅ Saved configuration to ${LISTS_FILE}`);
+    
+    // Clear addon cache
+    const addonPath = require.resolve('./addon');
+    delete require.cache[addonPath];
+    console.log('🔄 Cleared addon module cache');
+    
+    res.json({ 
+      success: true, 
+      message: `Configuration saved with ${lists.length} lists`
+    });
+    
+  } catch (error) {
+    console.error('❌ Error saving configuration:', error);
+    res.status(500).json({ error: 'Failed to save configuration' });
   }
 });
 
@@ -436,41 +470,6 @@ app.post('/api/preview-list', async (req, res) => {
         console.error('Preview error:', error);
         res.status(500).json({ error: 'Failed to generate preview' });
     }
-});
-
-app.post('/api/config', async (req, res) => {
-  try {
-    const { lists } = req.body;
-    console.log(`💾 Saving ${lists.length} lists to configuration`);
-    
-    // Save the configuration
-    const configData = { lists: lists || [] };
-    fs.writeFileSync(LISTS_FILE, JSON.stringify(configData, null, 2));
-    console.log(`✅ Saved configuration to ${LISTS_FILE}`);
-    
-    // Clear the addon module cache to force reload
-    const addonPath = require.resolve('./addon');
-    delete require.cache[addonPath];
-    console.log('🔄 Cleared addon module cache');
-    
-    // Force a delay to ensure file write is complete
-    setTimeout(() => {
-      console.log('🔄 Configuration should be updated in addon');
-    }, 500);
-    
-    res.json({ 
-      success: true, 
-      message: `Configuration saved with ${lists.length} lists`,
-      listsCount: lists.length
-    });
-    
-  } catch (error) {
-    console.error('❌ Error saving configuration:', error);
-    res.status(500).json({ 
-      error: 'Failed to save configuration',
-      details: error.message 
-    });
-  }
 });
 
 app.post('/api/validate-list', async (req, res) => {
